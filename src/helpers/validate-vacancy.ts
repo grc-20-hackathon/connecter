@@ -1,7 +1,14 @@
-import { JobOpening } from '../models/job-opening.interface';
+import { IJobOpening } from 'src/models/job-opening.interface';
 
-export const validateVacancies = (jobOpenings: JobOpening[]): void | never => {
+
+export const validateVacancies = (jobOpenings: IJobOpening[]): void | never => {
   jobOpenings.forEach((jobOpening) => {
+    if (jobOpening.geoId) {
+      throw new Error(
+        `Job opening: ${jobOpening.name.value} with geoId: ${jobOpening.geoId} already exists`,
+      );
+    }
+
     if (!jobOpening?.name?.value) {
       throw new Error('Name is required');
     }

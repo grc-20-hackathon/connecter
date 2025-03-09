@@ -6,7 +6,7 @@ export interface Result {
 
 export async function fuzzySearch(searchTerm: string): Promise<Result[]> {
   const response = await fetch(
-    `https://api-testnet.grc-20.thegraph.com/search?q=${searchTerm}&network=TESTNET`,
+    `https://api-testnet.grc-20.thegraph.com/search?q=${searchTerm}`,
   );
   const { results } = (await response.json()) as { results: Result[] };
   return results;

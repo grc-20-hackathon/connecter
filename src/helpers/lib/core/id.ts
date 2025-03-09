@@ -5,8 +5,16 @@
  * @since 0.0.6
  */
 
-import { v4 as uuidv4 } from 'uuid';
-import { encodeBase58 } from './base58';
+import { validate as uuidValidate, v4 as uuidv4 } from 'uuid';
+import { decodeBase58ToUUID, encodeBase58 } from './base58';
+import { Brand } from 'effect';
+
+export type Id = string & Brand.Brand<'Id'>;
+
+export const Id = Brand.refined<Id>(
+  (id) => isValid(id),
+  (id) => Brand.error(`Expected ${id} to be a valid Id`),
+);
 
 /**
  * Generates a globally unique knowledge graph identifier.
@@ -21,19 +29,39 @@ import { encodeBase58 } from './base58';
  *
  * @returns base58 encoded v4 UUID
  */
-export function generate(): string {
+export function generate(): Id {
   const uuid = uuidv4();
   const stripped = uuid.replaceAll(/-/g, '');
-  const id = encodeBase58(stripped);
+  const rawId = encodeBase58(stripped);
 
   // In extremely rare occasions the id generator may result in ids that are
   // 21 characters instead of 22. Theoretically the smallest length the id can
   // generate is 16 characters, but only in specifically engineered cases.
   //
   // If this occurs we can generate again until we get a valid id.
-  if (id.length === 22) {
-    return id;
+  if (rawId.length === 22) {
+    return Id(rawId);
   }
 
   return generate();
+}
+
+export function isValid(id: string): boolean {
+  if (id.length !== 22 && id.length !== 21) {
+    return false;
+  }
+
+  try {
+    const decoded = decodeBase58ToUUID(id);
+    return uuidValidate(decoded);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (error) {
+    return false;
+  }
+}
+
+export function assertValid(id: string) {
+  if (!isValid(id)) {
+    throw new Error(`Invalid id: ${id}`);
+  }
 }

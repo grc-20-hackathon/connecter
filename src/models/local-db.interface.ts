@@ -5,6 +5,7 @@ interface SuccessfullyCreatedJob {
   timestamp: string;
   projectName: string;
   projectId: string;
+  rawParsedDBJobOpeningId: string;
 }
 
 export type SuccessfullyCreatedJobsDb = Record<string, SuccessfullyCreatedJob>;

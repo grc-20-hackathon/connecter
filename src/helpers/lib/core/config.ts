@@ -9,15 +9,14 @@ const RPC = process.env.RPC;
 if (!RPC) {
   throw new Error('RPC does not exist in environment');
 }
+const PK_MAINNET = process.env.PK_MAINNET;
 
-const AUTHOR = process.env.AUTHOR;
-
-if (!AUTHOR) {
-  throw new Error('AUTHOR does not exist in environment');
+if (!PK_MAINNET) {
+  throw new Error('PK_MAINNET does not exist in environment');
 }
 
 export const config = {
   pk: PK,
   rpc: RPC,
-  author: AUTHOR,
+  pkMainnet: PK_MAINNET,
 };

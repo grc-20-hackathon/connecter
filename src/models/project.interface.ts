@@ -5,8 +5,8 @@ export interface IProject {
   name: IType;
   description: IType;
   types: IType<IType<IEntity>[]>;
-  avatar: IType;
-  cover: IType;
+  avatar: IType<IType>;
+  cover: IType<IType>;
   website: IType;
   x: IType;
 }

@@ -1,6 +1,5 @@
 import {
   type DefaultProperties,
-  type Op,
   Relation,
   Triple,
 } from '@graphprotocol/grc-20';
@@ -9,6 +8,7 @@ import {
   DESCRIPTION_PROPERTY,
   NAME_PROPERTY,
 } from '../../ids/system';
+import { Op } from '../../types';
 
 export const createDefaultProperties = (
   params: DefaultProperties & { entityId: string },

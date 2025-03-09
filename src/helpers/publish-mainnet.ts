@@ -1,5 +1,6 @@
-import { Ipfs, Op } from '@graphprotocol/grc-20';
-import { wallet } from '../core/wallet';
+import { Ipfs, type Op } from '@graphprotocol/grc-20';
+import { getSmartAccountWalletClient } from '@graphprotocol/grc-20';
+import { config } from './lib/core/config';
 
 type PublishOptions = {
   spaceId: string;
@@ -9,11 +10,21 @@ type PublishOptions = {
 };
 
 export async function publish(options: PublishOptions) {
+
+  const privateKey = `0x${config.pkMainnet}` as `0x${string}`;
+
+  const smartAccountWalletClient = await getSmartAccountWalletClient({
+    privateKey,
+    //rpcUrl: config.rpc, // optional
+  });
+
   const cid = await Ipfs.publishEdit({
     name: options.editName,
     author: options.author,
     ops: options.ops,
   });
+
+  console.log('cid', cid);
 
   // This returns the correct contract address and calldata depending on the space id
   // Make sure you use the correct space id in the URL below and the correct network.
@@ -23,8 +34,7 @@ export async function publish(options: PublishOptions) {
       method: 'POST',
       body: JSON.stringify({
         cid: cid,
-        // Optionally specify TESTNET or MAINNET. Defaults to MAINNET
-        network: 'TESTNET',
+        network: 'MAINNET',
       }),
     },
   );
@@ -32,8 +42,7 @@ export async function publish(options: PublishOptions) {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const { to, data } = await result.json();
 
-  //@ts-ignore
-  return await wallet.sendTransaction({
+  return await smartAccountWalletClient.sendTransaction({
     to: to,
     value: 0n,
     data: data,

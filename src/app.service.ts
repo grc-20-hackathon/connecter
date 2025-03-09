@@ -3,9 +3,12 @@ import { createVacancy } from './helpers/create-vacancy';
 import { TransferDto } from './job-opening-dto/transfer.dto';
 import { Op } from '@graphprotocol/grc-20';
 import { LocalDbHandler } from './helpers/local-db-handler';
-import { SuccessfullyCreatedJobsDb } from './models/local-db.interface';
 import { validateVacancies } from './helpers/validate-vacancy';
-import { JobOpening } from './models/job-opening.interface';
+import { createImage } from './helpers/lib/grapf/create-image';
+import { UploadImageDto } from './job-opening-dto/upload-image-dto';
+import { publish } from './helpers/publish-mainnet';
+import { SuccessfullyCreatedJobsDb } from './models/local-db.interface';
+import { IJobOpening } from './models/job-opening.interface';
 
 export interface LocalDBs {
   projects: Readonly<Record<string, string>>;
@@ -32,12 +35,12 @@ export class AppService {
     );
   #errorsHandler = new LocalDbHandler('errors.json');
 
-  async transfer({ data }: TransferDto): Promise<string[]> {
+  async transfer({ data }: TransferDto): Promise<Record<string, string>> {
     try {
       validateVacancies(data);
 
       const bulkOpsToPublish: Op[] = [];
-      const createdJobOpeningIds: string[] = [];
+      const createdJobOpeningsMap: Record<string, string> = {};
       const createdJobOpenings: SuccessfullyCreatedJobsDb = {};
 
       const loggers = this.#getLoggers();
@@ -50,7 +53,10 @@ export class AppService {
         );
 
         bulkOpsToPublish.push(...ops);
-        createdJobOpeningIds.push(id);
+        createdJobOpeningsMap[
+          jobOpening.id ??
+            `unknown job opening id created at ${new Date().toISOString()} on position ${data.indexOf(jobOpening)}`
+        ] = id;
 
         createdJobOpenings[id] = this.#getSuccessfullyCreatedJobOpeningLog(
           jobOpening,
@@ -61,19 +67,14 @@ export class AppService {
         localDBs = updatedLocalDBs;
       }
 
-      // const txHash = await publish({2
-      //   spaceId: 'PHsbZCCxokzvMxVGphntsc',
-      //   author: config.author,
-      //   editName: 'Create Job Opening',
-      //   ops: bulkOpsToPublish,
-      // });
+      await this.#publish(bulkOpsToPublish);
 
       await Promise.all([
         this.#appendLocalDBs(loggers, localDBs),
         this.#successfullyCreatedJobOpeningHandler.append(createdJobOpenings),
       ]);
 
-      return createdJobOpeningIds;
+      return createdJobOpeningsMap;
     } catch (error) {
       console.error(error);
 
@@ -89,6 +90,30 @@ export class AppService {
         'Error creating job openings ' + (error as Error).message,
       );
     }
+  }
+
+  async uploadImage({
+    name,
+    description,
+    url,
+  }: UploadImageDto): Promise<string> {
+    const imgLogger = new LocalDbHandler('images.json');
+    const uploadImageResults = await createImage({
+      name,
+      description,
+      url,
+    });
+
+    await this.#publish(uploadImageResults.ops);
+    await imgLogger.append({
+      [uploadImageResults.id]: {
+        name,
+        description,
+        url,
+      },
+    });
+
+    return uploadImageResults.id;
   }
 
   #getLoggers(): Loggers<LocalDBs> {
@@ -129,17 +154,30 @@ export class AppService {
   }
 
   #getSuccessfullyCreatedJobOpeningLog(
-    jobOpening: JobOpening,
-    id: string,
+    jobOpening: IJobOpening,
     projectId: string,
+    id: string,
   ) {
     return {
       timestamp: new Date().toISOString(),
       name: jobOpening.name.value,
       description: jobOpening.description.value,
       projectName: jobOpening.project.value.name.value,
+      rawParsedDBJobOpeningId: jobOpening.id ?? `unknown`,
       projectId,
       id,
     };
+  }
+
+  #publish(ops: Op[]) {
+    const tx = publish({
+      spaceId: '9LDiEvyWSUxwVKU41b1Mbp',
+      author: '0x3cdB5102F5a5D0C0FD47882430860ae96AFb6FAF',
+      editName: 'Create Job Opening Cover',
+      ops,
+    });
+
+    console.log('tx', tx);
+    return tx;
   }
 }

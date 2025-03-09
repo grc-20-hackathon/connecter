@@ -1,7 +1,7 @@
-import { JobOpening } from '../models/job-opening.interface';
-import { Op, Relation, Triple } from '@graphprotocol/grc-20';
+import { Id, Op, Relation, Triple } from '@graphprotocol/grc-20';
 import { createEntity } from './lib/grapf/create-entity';
 import {
+  AVATAR_PROPERTY,
   LOCATION_PROPERTY,
   PROJECT_PROPERTY,
   PUBLISH_DATE_PROPERTY,
@@ -10,10 +10,20 @@ import {
   SKILLS_PROPERTY,
   WEB_URL_PROPERTY,
 } from './lib/ids/content';
-import { COMPANY_TYPE, ROLE_PROPERTY } from './lib/ids/system';
+import {
+  COMPANY_TYPE,
+  COVER_PROPERTY,
+  NAME_PROPERTY,
+  ROLE_PROPERTY,
+} from './lib/ids/system';
 import { createContent } from './create-content';
-import { fuzzySearch, Result } from './fuzzy-search';
 import { LocalDBs } from '../app.service';
+import { normalizeSearchTerm } from './mormalize-search-term';
+import { getSearchResults } from './get-search-results';
+import { createRelationByGeoId } from './create-relation-by-geo-id';
+import { getCurrencyUnitId } from './get-currency-unit-id';
+import { createImage } from './lib/grapf/create-image';
+import { IJobOpening } from '../models/job-opening.interface';
 
 const JOB_OPENING_TYPE_ID = 'RaMe9z4ZwLnHvMJeQL7ZNk';
 const EMPLOYMENT_TYPE_ID = 'XFpLwwaKZwonymUVVSKJfX';
@@ -24,39 +34,13 @@ const X_PROPERTY_ID = '2eroVfdaXQEUw314r5hr35';
 const CRYPTO_SPACE_ID = '5N7kvjd6dQsfKGv6eSGkWi';
 const RELATED_SPACE_ID = 'CHwmK8bk4KMCqBNiV2waL9';
 
-const normalizeSearchTerm = (searchTerm: string) =>
-  searchTerm
-    .split(' ')
-    .map((word) => word.trim())
-    .filter(Boolean)
-    .join(' ')
-    .replaceAll(/[^a-zA-Z0-9]/g, '');
-
-const getTypeId = (searchResults: Result[], name: string, type: string) =>
-  searchResults
-    ?.filter((result) => result.types.some(({ name }) => name === type))
-    .find((result) => result.name.trim().toLowerCase() === name.toLowerCase())
-    ?.id;
-
 const getDefaultEntity = () => ({
   id: '',
   ops: [] as Op[],
 });
 
-async function searchEntity(
-  name: string,
-  type: string,
-  localDb: Record<string, string>,
-): Promise<string> {
-  const normalizedName = normalizeSearchTerm(name);
-  return (
-    localDb[normalizedName] ||
-    (getTypeId(await fuzzySearch(normalizedName), normalizedName, type) ?? '')
-  );
-}
-
 export const createVacancy = async (
-  jobData: JobOpening,
+  jobData: IJobOpening,
   localDBs: LocalDBs,
 ) => {
   const updatedLocalDBs = {
@@ -68,64 +52,21 @@ export const createVacancy = async (
     notFoundLocations: { ...localDBs.notFoundLocations },
   };
 
-  const searchPromises = {
-    roles: jobData.roles.value.map((role) =>
-      searchEntity(role.value.name.value, 'Role', updatedLocalDBs.roles),
-    ),
-    skills: jobData.skills.value.map((skill) =>
-      searchEntity(skill.value.name.value, 'Skill', updatedLocalDBs.skills),
-    ),
-    employmentTypes: jobData.employmentTypes.value.map((empType) =>
-      searchEntity(
-        empType.value.name.value,
-        'EmploymentType', //todo check type
-        updatedLocalDBs.employmentTypes,
-      ),
-    ),
-    project: searchEntity(
-      jobData.project.value.name.value,
-      'Project',
-      updatedLocalDBs.projects,
-    ),
-    location: {
-      region: jobData.location?.value?.region?.value?.name?.value
-        ? searchEntity(
-            jobData.location.value.region.value.name.value,
-            'Region',
-            updatedLocalDBs.locations,
-          )
-        : Promise.resolve(''),
-      city: jobData.location?.value?.city?.value?.name?.value
-        ? searchEntity(
-            jobData.location.value.city.value.name.value,
-            'City',
-            updatedLocalDBs.locations,
-          )
-        : Promise.resolve(''),
-    },
-  };
-
-  const searchResults = {
-    roles: await Promise.all(searchPromises.roles),
-    skills: await Promise.all(searchPromises.skills),
-    employmentTypes: await Promise.all(searchPromises.employmentTypes),
-    project: await searchPromises.project,
-    location: {
-      region: await searchPromises.location.region,
-      city: await searchPromises.location.city,
-    },
-  };
+  const searchResults = await getSearchResults(jobData, updatedLocalDBs);
 
   const ops: Op[] = [];
 
   //Job entity
   const { id, ops: jobOps } = createEntity({
-    name: jobData.name.value,
+    name: jobData.name.geoId ? '' : jobData.name.value,
     description: jobData.description.value,
     types: [JOB_OPENING_TYPE_ID],
-    cover: jobData?.cover?.value ?? null,
+    cover: jobData?.cover?.value?.geoId as Id.Id,
   });
-  ops.push(...jobOps);
+  ops.push(
+    ...jobOps,
+    ...createRelationByGeoId(jobData.name.geoId, id, NAME_PROPERTY),
+  );
 
   // Add Content
   ops.push(...createContent(id, jobData.content.value));
@@ -217,9 +158,46 @@ export const createVacancy = async (
     projectEntity = createEntity({
       name: jobData.project.value.name.value,
       description: jobData.project.value.description.value,
-      cover: jobData.project.value?.cover?.value ?? null,
       types: [COMPANY_TYPE, PROJECT_PROPERTY],
     });
+
+    //add project cover
+    const createCoverResult = await createImage({
+      name: 'Cover for' + jobData.project?.value?.name?.value,
+      description: 'Cover for' + jobData.project?.value?.name?.value,
+      url: jobData.project.value.cover?.value?.value ?? '',
+    });
+
+    ops.push(
+      ...createCoverResult.ops,
+      Relation.make({
+        fromId: projectEntity.id,
+        relationTypeId: COVER_PROPERTY,
+        toId: createCoverResult.id as Id.Id,
+      }),
+    );
+
+    //add project avatar
+    const createAvatarResult = await createImage({
+      name: 'Avatar for' + jobData.project?.value?.name?.value,
+      description: 'Avatar for' + jobData.project?.value?.name?.value,
+      url: jobData.project.value.avatar?.value?.value ?? '',
+    });
+
+    ops.push(
+      ...createAvatarResult.ops,
+      Relation.make({
+        fromId: projectEntity.id,
+        relationTypeId: AVATAR_PROPERTY,
+        toId: createAvatarResult.id as Id.Id,
+      }),
+      //add job avatar
+      ...createRelationByGeoId(
+        jobData.avatar?.value?.geoId ?? createAvatarResult.id,
+        id,
+        AVATAR_PROPERTY,
+      ),
+    );
 
     if (jobData.project.value?.website?.value) {
       ops.push(
@@ -248,41 +226,58 @@ export const createVacancy = async (
         toId: projectEntity.id,
       }),
     );
+
+    //add project avatar
   }
   updatedLocalDBs.projects[projectName] = projectEntity.id;
-  ops.push(...projectEntity.ops);
+  ops.push(
+    ...projectEntity.ops,
+    // ...createRelationByGeoId(
+    //   jobData.project.value?.avatar?.value?.geoId,
+    //   id,
+    //   AVATAR_PROPERTY,
+    // ),
+  );
 
   // Add Salary
-  if (!jobData.salaryMin?.value) {
+  if (jobData.salaryMin?.value) {
     ops.push(
       Triple.make({
         attributeId: SALARY_MIN_PROP_ID,
         entityId: id,
         value: {
           type: 'NUMBER',
-          value: jobData.salaryMin.value,
-          options: { unit: '2eGL8drmSYAqLoetcx3yR1' },
+          value: jobData.salaryMin.value.toString(),
+          options: {
+            unit:
+              jobData.salaryMin.currency?.geoId ??
+              getCurrencyUnitId(jobData.salaryMin.currency?.value),
+          },
         },
       }),
     );
   }
 
-  if (!jobData.salaryMax?.value) {
+  if (jobData.salaryMax?.value) {
     ops.push(
       Triple.make({
         attributeId: SALARY_MAX_PROP_ID,
         entityId: id,
         value: {
           type: 'NUMBER',
-          value: jobData.salaryMax.value,
-          options: { unit: 'EWCAJP9TQoZ3EhcwyRg7mk' },
+          value: jobData.salaryMax.value.toString(),
+          options: {
+            unit:
+              jobData.salaryMax.currency?.geoId ||
+              getCurrencyUnitId(jobData.salaryMax.currency?.value),
+          },
         },
       }),
     );
   }
 
   //Add publish date
-  if (!jobData.publishDate?.value) {
+  if (jobData.publishDate?.value) {
     ops.push(
       Triple.make({
         attributeId: PUBLISH_DATE_PROPERTY,
@@ -293,10 +288,10 @@ export const createVacancy = async (
   }
 
   //Add location
+  const regionName = normalizeSearchTerm(
+    jobData.location?.value?.region?.value?.name?.value,
+  );
   if (searchResults.location.region) {
-    const regionName = normalizeSearchTerm(
-      jobData.location?.value?.region?.value?.name?.value,
-    );
     ops.push(
       Relation.make({
         fromId: id,
@@ -306,18 +301,15 @@ export const createVacancy = async (
     );
     updatedLocalDBs.locations[regionName] = searchResults.location.region;
   } else if (jobData.location?.value?.region?.value?.name?.value) {
-    const regionName = normalizeSearchTerm(
-      jobData.location.value.region.value.name.value,
-    );
     if (!updatedLocalDBs.notFoundLocations[regionName]) {
       updatedLocalDBs.notFoundLocations[regionName] = 'region';
     }
   }
 
+  const cityName = normalizeSearchTerm(
+    jobData.location?.value?.city?.value?.name?.value,
+  );
   if (searchResults.location.city) {
-    const cityName = normalizeSearchTerm(
-      jobData.location?.value?.city?.value?.name?.value,
-    );
     ops.push(
       Relation.make({
         fromId: id,
@@ -327,9 +319,6 @@ export const createVacancy = async (
     );
     updatedLocalDBs.locations[cityName] = searchResults.location.city;
   } else if (jobData.location?.value?.city?.value?.name?.value) {
-    const cityName = normalizeSearchTerm(
-      jobData.location.value.city.value.name.value,
-    );
     if (!updatedLocalDBs.notFoundLocations[cityName]) {
       updatedLocalDBs.notFoundLocations[cityName] = 'city';
     }
@@ -345,7 +334,7 @@ export const createVacancy = async (
   );
 
   //Add website
-  if (!jobData.webURL?.value) {
+  if (jobData.webURL?.value) {
     ops.push(
       Triple.make({
         attributeId: WEB_URL_PROPERTY,
