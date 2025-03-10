@@ -1,3 +1,15 @@
+# NestJS GraphQL Application with Geolocation and Image Upload
+
+This NestJS application leverages GraphQL to manage and publish data, incorporating geolocation information and supporting image uploads. It ensures efficient data handling and enhances user experience through seamless integration of these features.
+## Features
+
+- **Geo Integration**
+- **Data Publish**
+- **Image Upload Support**
+
+
+
+
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
 </p>
