@@ -161,13 +161,20 @@ export const createVacancy = async (
       types: [COMPANY_TYPE, PROJECT_PROPERTY],
     });
 
-    //add project cover
-    const createCoverResult = await createImage({
-      name: 'Cover for' + jobData.project?.value?.name?.value,
-      description: 'Cover for' + jobData.project?.value?.name?.value,
-      url: jobData.project.value.cover?.value?.value ?? '',
-    });
+    const [createCoverResult, createAvatarResult] = await Promise.all([
+      createImage({
+        name: 'Cover for' + jobData.project?.value?.name?.value,
+        description: 'Cover for' + jobData.project?.value?.name?.value,
+        url: jobData.project.value.cover?.value?.value ?? '',
+      }),
+      createImage({
+        name: 'Avatar for' + jobData.project?.value?.name?.value,
+        description: 'Avatar for' + jobData.project?.value?.name?.value,
+        url: jobData.project.value.avatar?.value?.value ?? '',
+      }),
+    ]);
 
+    //add project cover
     ops.push(
       ...createCoverResult.ops,
       Relation.make({
@@ -178,12 +185,6 @@ export const createVacancy = async (
     );
 
     //add project avatar
-    const createAvatarResult = await createImage({
-      name: 'Avatar for' + jobData.project?.value?.name?.value,
-      description: 'Avatar for' + jobData.project?.value?.name?.value,
-      url: jobData.project.value.avatar?.value?.value ?? '',
-    });
-
     ops.push(
       ...createAvatarResult.ops,
       Relation.make({
@@ -218,17 +219,16 @@ export const createVacancy = async (
         }),
       );
     }
-
-    ops.push(
-      Relation.make({
-        fromId: id,
-        relationTypeId: PROJECT_PROPERTY,
-        toId: projectEntity.id,
-      }),
-    );
-
-    //add project avatar
   }
+
+  ops.push(
+    Relation.make({
+      fromId: id,
+      relationTypeId: PROJECT_PROPERTY,
+      toId: projectEntity.id,
+    }),
+  );
+
   updatedLocalDBs.projects[projectName] = projectEntity.id;
   ops.push(
     ...projectEntity.ops,

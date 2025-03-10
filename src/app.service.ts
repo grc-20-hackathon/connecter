@@ -173,7 +173,7 @@ export class AppService {
     const tx = publish({
       spaceId: '9LDiEvyWSUxwVKU41b1Mbp',
       author: '0x3cdB5102F5a5D0C0FD47882430860ae96AFb6FAF',
-      editName: 'Create Job Opening Cover',
+      editName: 'Add 5 Job Openings',
       ops,
     });
 
